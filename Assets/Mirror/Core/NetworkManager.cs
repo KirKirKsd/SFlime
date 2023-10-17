@@ -29,7 +29,7 @@ namespace Mirror
 
         /// <summary>Should the server auto-start when 'Server Build' is checked in build settings</summary>
         [Header("Headless Builds")]
-        [Tooltip("Should the server auto-start when 'Server Build' is checked in build settings")]
+        [Tooltip("Should the server auto-start when 'Dedicated Server' platform is selected, or 'Server Build' is checked in build settings.")]
         [FormerlySerializedAs("startOnHeadless")]
         public bool autoStartServerBuild = true;
 
@@ -127,6 +127,10 @@ namespace Mirror
         public static List<Transform> startPositions = new List<Transform>();
         public static int startPositionIndex;
 
+        [Header("Security")]
+        [Tooltip("For security, it is recommended to disconnect a player if a networked action triggers an exception\nThis could prevent components being accessed in an undefined state, which may be an attack vector for exploits.\nHowever, some games may want to allow exceptions in order to not interrupt the player's experience.")]
+        public bool exceptionsDisconnect = true; // security by default
+
         [Header("Snapshot Interpolation")]
         public SnapshotInterpolationSettings snapshotSettings = new SnapshotInterpolationSettings();
 
@@ -179,7 +183,7 @@ namespace Mirror
             // This avoids the mysterious "Replacing existing prefab with assetId ... Old prefab 'Player', New prefab 'Player'" warning.
             if (playerPrefab != null && spawnPrefabs.Contains(playerPrefab))
             {
-                Debug.LogWarning("NetworkManager - Player Prefab should not be added to Registered Spawnable Prefabs list...removed it.");
+                Debug.LogWarning("NetworkManager - Player Prefab doesn't need to be in Spawnable Prefabs list too. Removing it.");
                 spawnPrefabs.Remove(playerPrefab);
             }
         }
@@ -288,7 +292,9 @@ namespace Mirror
         // users can overwrite this to display connection quality warnings, etc.
         protected virtual void OnConnectionQualityChanged(ConnectionQuality previous, ConnectionQuality current)
         {
-            Debug.Log($"[Mirror] Connection Quality changed from {previous} to {current}");
+            // logging the change is very useful to track down user's lag reports.
+            // we want to include as much detail as possible for debugging.
+            Debug.Log($"[Mirror] Connection Quality changed from {previous} to {current}:\n  rtt={(NetworkTime.rtt*1000):F1}ms\n  rttVar={(NetworkTime.rttVariance*1000):F1}ms\n  bufferTime={(NetworkClient.bufferTime*1000):F1}ms");
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -321,6 +327,11 @@ namespace Mirror
             // Debug.Log("NetworkManager SetupServer");
             InitializeSingleton();
 
+            // apply settings before initializing anything
+            NetworkServer.disconnectInactiveConnections = disconnectInactiveConnections;
+            NetworkServer.disconnectInactiveTimeout = disconnectInactiveTimeout;
+            NetworkServer.exceptionsDisconnect = exceptionsDisconnect;
+
             if (runInBackground)
                 Application.runInBackground = true;
 
@@ -331,9 +342,6 @@ namespace Mirror
             }
 
             ConfigureHeadlessFrameRate();
-
-            NetworkServer.disconnectInactiveConnections = disconnectInactiveConnections;
-            NetworkServer.disconnectInactiveTimeout = disconnectInactiveTimeout;
 
             // start listening to network connections
             NetworkServer.Listen(maxConnections);
@@ -400,6 +408,10 @@ namespace Mirror
         {
             InitializeSingleton();
 
+            // apply settings before initializing anything
+            NetworkClient.exceptionsDisconnect = exceptionsDisconnect;
+            // NetworkClient.sendRate = clientSendRate;
+
             if (runInBackground)
                 Application.runInBackground = true;
 
@@ -409,7 +421,6 @@ namespace Mirror
                 authenticator.OnClientAuthenticated.AddListener(OnClientAuthenticated);
             }
 
-            // NetworkClient.sendRate = clientSendRate;
         }
 
         /// <summary>Starts the client, connects it to the server with networkAddress.</summary>
